@@ -1,0 +1,56 @@
+%% Gestor de Calificaciones - Arquitectura del sistema
+%% Vista integral: despliegue (Docker) + arquitectura en capas
+flowchart TD
+    User(["👤 Usuario<br/>Navegador"])
+
+    subgraph host["Host - Docker Compose"]
+
+        subgraph web["Contenedor: swarch-mo (Flask :5000)"]
+            APP["app.py<br/>create_app() - Application Factory"]
+            CFG["config.py<br/>DB_CONFIG"]
+
+            subgraph P["Capa de Presentacion"]
+                C["Controller<br/>grade_controller.py<br/>Blueprint grade_bp"]
+                T["Plantillas Jinja2<br/>base.html - grade_list.html"]
+            end
+
+            subgraph B["Capa de Negocio"]
+                S["Service<br/>grade_service.py"]
+            end
+
+            subgraph D["Capa de Acceso a Datos"]
+                R["Repository<br/>grade_repository.py"]
+                M["Model<br/>grade.py - Grade(db.Model)"]
+            end
+        end
+
+        subgraph dbc["Contenedor: swarch-db"]
+            DB[("MySQL 8.0<br/>DB: swarch-db<br/>tabla: grades")]
+        end
+    end
+
+    User -- "HTTP :8080 -> :5000" --> C
+    C -- "render_template" --> T
+    T -- "HTML" --> User
+
+    C --> S
+    S --> R
+    R --> M
+    M -- "SQLAlchemy ORM" --> DB
+
+    APP -. "register_blueprint" .-> C
+    APP -. "db.init_app" .-> M
+    CFG -. "config" .-> APP
+    web -. "depends_on: service_healthy" .-> dbc
+
+    classDef pres fill:#e3f2fd,stroke:#1565c0,color:#0d47a1;
+    classDef biz  fill:#e8f5e9,stroke:#2e7d32,color:#1b5e20;
+    classDef data fill:#fff3e0,stroke:#ef6c00,color:#e65100;
+    classDef infra fill:#f3e5f5,stroke:#6a1b9a,color:#4a148c;
+    classDef store fill:#eceff1,stroke:#455a64,color:#263238;
+
+    class C,T pres;
+    class S biz;
+    class R,M data;
+    class APP,CFG infra;
+    class DB store;

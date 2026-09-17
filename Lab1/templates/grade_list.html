@@ -1,0 +1,17 @@
+{% extends "base.html" %}
+{% block content %}
+<form action="/add" method="post">
+    <input type="text" name="student_name" placeholder="Nombre del estudiante" required>
+    <input type="text" name="subject" placeholder="Asignatura" required>
+    <input type="number" step="0.1" name="score" placeholder="Calificación" required>
+    <input type="submit" value="Agregar">
+</form>
+<ul>
+    {% for grade in grades %}
+    <li>
+        {{ grade.student_name }} - {{ grade.subject }}: {{ grade.score }}
+        <a href="/delete/{{ grade.id }}">Eliminar</a>
+    </li>
+    {% endfor %}
+</ul>
+{% endblock %}
