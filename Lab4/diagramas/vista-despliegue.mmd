@@ -19,10 +19,10 @@ flowchart TB
 
         subgraph engine["Docker Engine"]
             subgraph red["Red Docker Compose: broker-pattern_default (bridge)"]
-                c2["<b>component-2</b> - Productor<br/>imagen: broker-pattern-component-2<br/>build ./component-2 (python:3.11-slim)<br/>FastAPI + Uvicorn + aio-pika<br/>escucha :8000"]
-                c1["<b>component-1</b> - Broker<br/>imagen: rabbitmq:3-management<br/>RabbitMQ + plugin de gestion<br/>escucha :5672 (AMQP)<br/>y :15672 (HTTP)"]
-                c3["<b>component-3</b> - Consumidor<br/>imagen: broker-pattern-component-3<br/>build ./component-3 (python:3.11-slim)<br/>worker Python + aio-pika + motor<br/><i>sin puertos expuestos</i>"]
-                c4[("<b>component-4</b> - Base de datos<br/>imagen: mongo<br/>MongoDB<br/>escucha :27017")]
+                c2["<b>component-2</b> - Productor<br/>imagen: broker-pattern-component-2<br/>build ./component-2 (python:3.11-slim)<br/>FastAPI + Uvicorn + aio-pika<br/>escucha :8000<br/><i>depends_on: component-1 (healthy)</i>"]
+                c1["<b>component-1</b> - Broker<br/>imagen: rabbitmq:3-management<br/>RabbitMQ + plugin de gestion<br/>cola durable items_queue<br/>escucha :5672 (AMQP) y :15672 (HTTP)<br/><i>healthcheck: check_port_connectivity</i>"]
+                c3["<b>component-3</b> - Consumidor<br/>imagen: broker-pattern-component-3<br/>build ./component-3 (python:3.11-slim)<br/>worker Python + aio-pika + motor<br/><i>sin puertos expuestos</i><br/><i>depends_on: component-1 (healthy), component-4</i><br/><i>restart: on-failure</i>"]
+                c4[("<b>component-4</b> - Base de datos<br/>imagen: mongo<br/>MongoDB - BD broker_lab, coleccion items<br/>escucha :27017")]
             end
         end
     end
@@ -38,18 +38,20 @@ flowchart TB
     p27017 -. "27017:27017" .-> c4
 
     c2 == "AMQP :5672<br/>publicar" ==> c1
-    c3 == "AMQP :5672<br/>consumir" ==> c1
-    c3 == "MongoDB wire :27017<br/>insert_one" ==> c4
+    c3 == "AMQP :5672<br/>suscribirse y consumir" ==> c1
+    c3 == "db_connector<br/>MongoDB :27017" ==> c4
 
     subgraph leyenda["Leyenda"]
-        lc["Contenedor"]
+        lc["Contenedor de servicio"]
+        lk["Contenedor del broker"]
         lp{{"Puerto publicado en el host"}}
         ld[("Contenedor de base de datos")]
         le["#8594; Solida: trafico externo al host"]
         lm["#8674; Punteada: mapeo de puertos host:contenedor"]
         li["#8658; Gruesa: comunicacion interna por la red Compose (DNS por nombre de servicio)"]
-        lc ~~~ lp ~~~ ld
-        le ~~~ lm ~~~ li
+        lt["<i>Cursiva</i>: orden de arranque y reinicio definidos en docker-compose.yml"]
+        lc ~~~ lk ~~~ lp ~~~ ld
+        le ~~~ lm ~~~ li ~~~ lt
     end
 
     %% enlace invisible: ubica la leyenda debajo del host
@@ -64,10 +66,10 @@ flowchart TB
 
     class usuario externo;
     class c2,c3,lc contenedor;
-    class c1 broker;
+    class c1,lk broker;
     class c4,ld bd;
     class p8000,p15672,p5672,p27017,lp puerto;
-    class le,lm,li nota;
+    class le,lm,li,lt nota;
 
     style host fill:#fafafa,stroke:#616161,color:#212121,stroke-width:2px;
     style engine fill:#e1f5fe,stroke:#0277bd,color:#01579b;
