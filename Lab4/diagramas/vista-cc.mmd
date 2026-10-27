@@ -1,42 +1,51 @@
 ---
 title: "Vista de Componentes y Conectores (C&C) - Patron Broker"
+config:
+  flowchart:
+    wrappingWidth: 320
 ---
 %% Laboratorio 4 - Vista C&C del sistema broker-pattern
-%% Formas: estadio = externo, rectangulo = servicio, subrutina = cola, cilindro = base de datos
-%% Flechas: solida = HTTP REST, gruesa = AMQP, punteada = db_connector
-flowchart LR
+%% Conectores segun la guia (seccion 5): C2 -> C1 (AMQP), C3 -> C1 (AMQP), C3 -> C4 (db_connector)
+%% Las flechas apuntan desde quien inicia la conexion; los numeros indican el orden del flujo
+flowchart TB
     cliente(["Cliente HTTP<br/>(externo)<br/>curl / navegador"])
 
     subgraph sistema["Sistema broker-pattern"]
-        c2["component-2<br/>Productor<br/>FastAPI"]
+        c2["<b>component-2</b><br/>Productor<br/>API HTTP - FastAPI"]
+        c3["<b>component-3</b><br/>Consumidor<br/>worker - aio-pika + motor"]
 
         subgraph c1["component-1 - Broker (RabbitMQ)"]
-            q[["Cola durable<br/>items_queue"]]
+            ex{{"default exchange<br/>(directo)"}}
+            q[["Conector: cola durable<br/><b>items_queue</b>"]]
         end
 
-        c3["component-3<br/>Consumidor<br/>worker<br/>aio-pika + motor"]
-        c4[("component-4<br/>MongoDB<br/>broker_lab.items")]
+        c4[("<b>component-4</b><br/>Base de datos MongoDB<br/>broker_lab.items")]
     end
 
-    cliente -- "HTTP REST<br/>POST /items" --> c2
-    c2 == "AMQP<br/>publicar" ==> q
-    q == "AMQP<br/>suscripcion / entrega" ==> c3
-    c3 -. "db_connector<br/>protocolo MongoDB" .-> c4
+    cliente -- "1. HTTP REST<br/>POST /items (JSON)" --> c2
+    c2 == "2. AMQP :5672<br/>publicar mensaje persistente" ==> ex
+    ex -- "3. enruta por<br/>routing_key = items_queue" --> q
+    c3 == "4. AMQP :5672<br/>suscribirse y consumir (ack)" ==> q
+    c3 -. "5. db_connector<br/>protocolo MongoDB :27017<br/>insert_one" .-> c4
 
     subgraph leyenda["Leyenda"]
+        direction LR
         lx(["Componente externo"])
-        ls["Servicio (contenedor)"]
-        lb[["Broker / cola de mensajes"]]
+        ls["Componente de servicio"]
+        lb[["Cola de mensajes (conector)"]]
+        le{{"Exchange del broker"}}
         ld[("Base de datos")]
-        lh["#8594; Solida azul:<br/>HTTP REST (sincrono)"]
-        la["#8658; Gruesa naranja:<br/>AMQP (asincrono)"]
-        lm["#8674; Punteada verde:<br/>db_connector (MongoDB)"]
-        lh ~~~ la ~~~ lm
-        lx ~~~ ls ~~~ lb ~~~ ld
+        lh["#8594; Solida azul: HTTP REST (sincrono)"]
+        la["#8658; Gruesa naranja: AMQP (asincrono, via broker)"]
+        lr["#8594; Fina naranja: enrutamiento interno del broker"]
+        lm["#8674; Punteada verde: db_connector (MongoDB)"]
+        ln["La flecha sale de quien inicia la conexion.<br/>Los mensajes viajan: productor #8594; cola #8594; consumidor"]
+        lx ~~~ ls ~~~ lb ~~~ le ~~~ ld
+        lh ~~~ la ~~~ lr ~~~ lm ~~~ ln
     end
 
-    %% enlace invisible: ubica la leyenda a la derecha del sistema
-    c4 ~~~ leyenda
+    %% enlace invisible: ubica la leyenda debajo del sistema
+    q ~~~ leyenda
 
     classDef externo fill:#eceff1,stroke:#455a64,color:#263238,stroke-dasharray:4 3;
     classDef servicio fill:#e3f2fd,stroke:#1565c0,color:#0d47a1;
@@ -44,20 +53,25 @@ flowchart LR
     classDef bd fill:#e8f5e9,stroke:#2e7d32,color:#1b5e20;
     classDef conHttp fill:#ffffff,stroke:#1565c0,color:#0d47a1;
     classDef conAmqp fill:#ffffff,stroke:#ef6c00,color:#e65100,stroke-width:3px;
+    classDef conRuta fill:#ffffff,stroke:#ef6c00,color:#e65100;
     classDef conDb fill:#ffffff,stroke:#2e7d32,color:#1b5e20,stroke-dasharray:4 3;
+    classDef nota fill:#fffde7,stroke:#9e9e9e,color:#424242;
 
     class cliente,lx externo;
     class c2,c3,ls servicio;
-    class q,lb broker;
+    class q,ex,lb,le broker;
     class c4,ld bd;
     class lh conHttp;
     class la conAmqp;
+    class lr conRuta;
     class lm conDb;
+    class ln nota;
 
     style sistema fill:#fafafa,stroke:#9e9e9e,color:#424242;
     style c1 fill:#fff8e1,stroke:#ef6c00,color:#e65100;
     style leyenda fill:#ffffff,stroke:#bdbdbd,color:#424242;
 
     linkStyle 0 stroke:#1565c0,stroke-width:2px;
-    linkStyle 1,2 stroke:#ef6c00,stroke-width:3px;
-    linkStyle 3 stroke:#2e7d32,stroke-width:2px;
+    linkStyle 1,3 stroke:#ef6c00,stroke-width:3px;
+    linkStyle 2 stroke:#ef6c00,stroke-width:1.5px;
+    linkStyle 4 stroke:#2e7d32,stroke-width:2px;
