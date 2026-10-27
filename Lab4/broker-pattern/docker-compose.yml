@@ -1,0 +1,44 @@
+services:
+  component-1:
+    image: rabbitmq:3-management
+    container_name: component-1
+    ports:
+      - "5672:5672"
+      - "15672:15672"
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "check_port_connectivity"]
+      interval: 5s
+      timeout: 10s
+      retries: 12
+
+  component-2:
+    build: ./component-2
+    container_name: component-2
+    ports:
+      - "8000:8000"
+    environment:
+      RABBIT_URL: amqp://guest:guest@component-1:5672/
+      QUEUE_NAME: items_queue
+    depends_on:
+      component-1:
+        condition: service_healthy
+
+  component-3:
+    build: ./component-3
+    container_name: component-3
+    environment:
+      RABBIT_URL: amqp://guest:guest@component-1:5672/
+      QUEUE_NAME: items_queue
+      MONGO_URL: mongodb://component-4:27017
+    restart: on-failure
+    depends_on:
+      component-1:
+        condition: service_healthy
+      component-4:
+        condition: service_started
+
+  component-4:
+    image: mongo
+    container_name: component-4
+    ports:
+      - "27017:27017"
