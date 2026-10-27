@@ -1,0 +1,80 @@
+---
+title: "Vista de Despliegue - Patron Broker (Docker Compose)"
+config:
+  flowchart:
+    wrappingWidth: 400
+    rankSpacing: 60
+    nodeSpacing: 40
+---
+%% Laboratorio 4 - Vista de despliegue del sistema broker-pattern
+%% Anidamiento: maquina host -> Docker Engine -> red de Docker Compose -> contenedores
+flowchart TB
+    usuario(["Usuario / cliente externo<br/>curl, navegador, mongosh"])
+
+    subgraph host["Maquina host - SO tipo Unix (Linux / macOS)"]
+        p8000{{"host :8000<br/>API"}}
+        p15672{{"host :15672<br/>dashboard"}}
+        p5672{{"host :5672<br/>AMQP"}}
+        p27017{{"host :27017<br/>MongoDB"}}
+
+        subgraph engine["Docker Engine"]
+            subgraph red["Red Docker Compose: broker-pattern_default (bridge)"]
+                c2["<b>component-2</b> - Productor<br/>imagen: broker-pattern-component-2<br/>build ./component-2 (python:3.11-slim)<br/>FastAPI + Uvicorn + aio-pika<br/>escucha :8000"]
+                c1["<b>component-1</b> - Broker<br/>imagen: rabbitmq:3-management<br/>RabbitMQ + plugin de gestion<br/>escucha :5672 (AMQP)<br/>y :15672 (HTTP)"]
+                c3["<b>component-3</b> - Consumidor<br/>imagen: broker-pattern-component-3<br/>build ./component-3 (python:3.11-slim)<br/>worker Python + aio-pika + motor<br/><i>sin puertos expuestos</i>"]
+                c4[("<b>component-4</b> - Base de datos<br/>imagen: mongo<br/>MongoDB<br/>escucha :27017")]
+            end
+        end
+    end
+
+    usuario -- "HTTP" --> p8000
+    usuario -- "HTTP" --> p15672
+    usuario -- "AMQP" --> p5672
+    usuario -- "MongoDB" --> p27017
+
+    p8000 -. "8000:8000" .-> c2
+    p15672 -. "15672:15672" .-> c1
+    p5672 -. "5672:5672" .-> c1
+    p27017 -. "27017:27017" .-> c4
+
+    c2 == "AMQP :5672<br/>publicar" ==> c1
+    c3 == "AMQP :5672<br/>consumir" ==> c1
+    c3 == "MongoDB wire :27017<br/>insert_one" ==> c4
+
+    subgraph leyenda["Leyenda"]
+        lc["Contenedor"]
+        lp{{"Puerto publicado en el host"}}
+        ld[("Contenedor de base de datos")]
+        le["#8594; Solida: trafico externo al host"]
+        lm["#8674; Punteada: mapeo de puertos host:contenedor"]
+        li["#8658; Gruesa: comunicacion interna por la red Compose (DNS por nombre de servicio)"]
+        lc ~~~ lp ~~~ ld
+        le ~~~ lm ~~~ li
+    end
+
+    %% enlace invisible: ubica la leyenda debajo del host
+    c4 ~~~ leyenda
+
+    classDef externo fill:#eceff1,stroke:#455a64,color:#263238,stroke-dasharray:4 3;
+    classDef contenedor fill:#e3f2fd,stroke:#1565c0,color:#0d47a1;
+    classDef broker fill:#fff3e0,stroke:#ef6c00,color:#e65100,stroke-width:2px;
+    classDef bd fill:#e8f5e9,stroke:#2e7d32,color:#1b5e20;
+    classDef puerto fill:#ede7f6,stroke:#5e35b1,color:#311b92;
+    classDef nota fill:#ffffff,stroke:#9e9e9e,color:#424242;
+
+    class usuario externo;
+    class c2,c3,lc contenedor;
+    class c1 broker;
+    class c4,ld bd;
+    class p8000,p15672,p5672,p27017,lp puerto;
+    class le,lm,li nota;
+
+    style host fill:#fafafa,stroke:#616161,color:#212121,stroke-width:2px;
+    style engine fill:#e1f5fe,stroke:#0277bd,color:#01579b;
+    style red fill:#ffffff,stroke:#0277bd,color:#01579b,stroke-dasharray:6 4;
+    style leyenda fill:#ffffff,stroke:#bdbdbd,color:#424242;
+
+    linkStyle 0,1,2,3 stroke:#455a64,stroke-width:1.5px;
+    linkStyle 4,5,6,7 stroke:#5e35b1,stroke-width:1.5px;
+    linkStyle 8,9 stroke:#ef6c00,stroke-width:3px;
+    linkStyle 10 stroke:#2e7d32,stroke-width:3px;
