@@ -4,7 +4,7 @@ import json
 import motor.motor_asyncio
 import os
 
-RABBIT_URL = os.environ.get("RABBIT_URL", "amqp://guest:guest@component1:5672/")
+RABBIT_URL = os.environ.get("RABBIT_URL", "amqp://guest:guest@component-1:5672/")
 QUEUE_NAME = os.environ.get("QUEUE_NAME", "items_queue")
 MONGO_URL = os.environ.get("MONGO_URL", "mongodb://component-4:27017")
 

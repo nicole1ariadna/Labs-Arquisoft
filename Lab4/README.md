@@ -160,8 +160,9 @@ resultado en todas, y sin reinicios del worker (`RestartCount = 0`).
 ## 6. Ajustes realizados respecto a la guía
 
 El código se implementó primero **exactamente** como en la guía y se ejecutó. Se
-observaron dos fallas, y para cada una se aplicó la corrección mínima. El código
-Python (`main.py`, `worker.py`) y los `requirements.txt` **no se modificaron**.
+observaron dos fallas, y para cada una se aplicó la corrección mínima. Los
+`requirements.txt` no se modificaron. En el código Python (`main.py`, `worker.py`)
+solo se corrigió el nombre de host de la URL por defecto (sección 6.3).
 
 ### 6.1 El worker se cae al arrancar (`docker-compose.yml`)
 
@@ -235,6 +236,21 @@ ENV PYTHONUNBUFFERED=1
 
 Esta variable desactiva el buffer de stdout/stderr de Python, así que cada `print`
 se escribe de inmediato y aparece en `docker logs`.
+
+### 6.3 Nombre del broker en la URL por defecto (`main.py`, `worker.py`)
+
+La URL por defecto de RabbitMQ decía `amqp://guest:guest@component1:5672/`, sin
+guion. El servicio se llama `component-1` (como en el PDF de la guía y en el
+`docker-compose.yml`), así que se corrigió a:
+
+```python
+RABBIT_URL = os.environ.get("RABBIT_URL", "amqp://guest:guest@component-1:5672/")
+```
+
+Con Docker Compose esto no cambiaba nada, porque la variable de entorno
+`RABBIT_URL` del `docker-compose.yml` reemplaza el valor por defecto. La corrección
+importa si un contenedor se ejecuta **sin** esa variable: con `component1`, el
+nombre no se resolvería en la red de Compose y la conexión fallaría.
 
 > **Nota sobre el entorno de pruebas.** Las pruebas se corrieron en un contenedor
 > en la nube con un proxy HTTPS corporativo. Ahí `pip install` falló con

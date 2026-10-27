@@ -7,7 +7,7 @@ import json
 
 app = FastAPI()
 
-RABBIT_URL = os.environ.get("RABBIT_URL", "amqp://guest:guest@component1:5672/")
+RABBIT_URL = os.environ.get("RABBIT_URL", "amqp://guest:guest@component-1:5672/")
 QUEUE_NAME = os.environ.get("QUEUE_NAME", "items_queue")
 
 class Item(BaseModel):
