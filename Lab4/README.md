@@ -254,43 +254,52 @@ Fuente: [`diagramas/vista-cc.mmd`](diagramas/vista-cc.mmd)
 ```mermaid
 ---
 title: "Vista de Componentes y Conectores (C&C) - Patron Broker"
+config:
+  flowchart:
+    wrappingWidth: 320
 ---
 %% Laboratorio 4 - Vista C&C del sistema broker-pattern
-%% Formas: estadio = externo, rectangulo = servicio, subrutina = cola, cilindro = base de datos
-%% Flechas: solida = HTTP REST, gruesa = AMQP, punteada = db_connector
-flowchart LR
+%% Conectores segun la guia (seccion 5): C2 -> C1 (AMQP), C3 -> C1 (AMQP), C3 -> C4 (db_connector)
+%% Las flechas apuntan desde quien inicia la conexion; los numeros indican el orden del flujo
+flowchart TB
     cliente(["Cliente HTTP<br/>(externo)<br/>curl / navegador"])
 
     subgraph sistema["Sistema broker-pattern"]
-        c2["component-2<br/>Productor<br/>FastAPI"]
+        c2["<b>component-2</b><br/>Productor<br/>API HTTP - FastAPI"]
+        c3["<b>component-3</b><br/>Consumidor<br/>worker - aio-pika + motor"]
 
         subgraph c1["component-1 - Broker (RabbitMQ)"]
-            q[["Cola durable<br/>items_queue"]]
+            ex{{"default exchange<br/>(directo)"}}
+            q[["Conector: cola durable<br/><b>items_queue</b>"]]
         end
 
-        c3["component-3<br/>Consumidor<br/>worker<br/>aio-pika + motor"]
-        c4[("component-4<br/>MongoDB<br/>broker_lab.items")]
+        c4[("<b>component-4</b><br/>Base de datos MongoDB<br/>broker_lab.items")]
     end
 
-    cliente -- "HTTP REST<br/>POST /items" --> c2
-    c2 == "AMQP<br/>publicar" ==> q
-    q == "AMQP<br/>suscripcion / entrega" ==> c3
-    c3 -. "db_connector<br/>protocolo MongoDB" .-> c4
+    cliente -- "1. HTTP REST<br/>POST /items (JSON)" --> c2
+    c2 == "2. AMQP :5672<br/>publicar mensaje persistente" ==> ex
+    ex -- "3. enruta por<br/>routing_key = items_queue" --> q
+    c3 == "4. AMQP :5672<br/>suscribirse y consumir (ack)" ==> q
+    c3 -. "5. db_connector<br/>protocolo MongoDB :27017<br/>insert_one" .-> c4
 
     subgraph leyenda["Leyenda"]
+        direction LR
         lx(["Componente externo"])
-        ls["Servicio (contenedor)"]
-        lb[["Broker / cola de mensajes"]]
+        ls["Componente de servicio"]
+        lb[["Cola de mensajes (conector)"]]
+        le{{"Exchange del broker"}}
         ld[("Base de datos")]
-        lh["#8594; Solida azul:<br/>HTTP REST (sincrono)"]
-        la["#8658; Gruesa naranja:<br/>AMQP (asincrono)"]
-        lm["#8674; Punteada verde:<br/>db_connector (MongoDB)"]
-        lh ~~~ la ~~~ lm
-        lx ~~~ ls ~~~ lb ~~~ ld
+        lh["#8594; Solida azul: HTTP REST (sincrono)"]
+        la["#8658; Gruesa naranja: AMQP (asincrono, via broker)"]
+        lr["#8594; Fina naranja: enrutamiento interno del broker"]
+        lm["#8674; Punteada verde: db_connector (MongoDB)"]
+        ln["La flecha sale de quien inicia la conexion.<br/>Los mensajes viajan: productor #8594; cola #8594; consumidor"]
+        lx ~~~ ls ~~~ lb ~~~ le ~~~ ld
+        lh ~~~ la ~~~ lr ~~~ lm ~~~ ln
     end
 
-    %% enlace invisible: ubica la leyenda a la derecha del sistema
-    c4 ~~~ leyenda
+    %% enlace invisible: ubica la leyenda debajo del sistema
+    q ~~~ leyenda
 
     classDef externo fill:#eceff1,stroke:#455a64,color:#263238,stroke-dasharray:4 3;
     classDef servicio fill:#e3f2fd,stroke:#1565c0,color:#0d47a1;
@@ -298,23 +307,28 @@ flowchart LR
     classDef bd fill:#e8f5e9,stroke:#2e7d32,color:#1b5e20;
     classDef conHttp fill:#ffffff,stroke:#1565c0,color:#0d47a1;
     classDef conAmqp fill:#ffffff,stroke:#ef6c00,color:#e65100,stroke-width:3px;
+    classDef conRuta fill:#ffffff,stroke:#ef6c00,color:#e65100;
     classDef conDb fill:#ffffff,stroke:#2e7d32,color:#1b5e20,stroke-dasharray:4 3;
+    classDef nota fill:#fffde7,stroke:#9e9e9e,color:#424242;
 
     class cliente,lx externo;
     class c2,c3,ls servicio;
-    class q,lb broker;
+    class q,ex,lb,le broker;
     class c4,ld bd;
     class lh conHttp;
     class la conAmqp;
+    class lr conRuta;
     class lm conDb;
+    class ln nota;
 
     style sistema fill:#fafafa,stroke:#9e9e9e,color:#424242;
     style c1 fill:#fff8e1,stroke:#ef6c00,color:#e65100;
     style leyenda fill:#ffffff,stroke:#bdbdbd,color:#424242;
 
     linkStyle 0 stroke:#1565c0,stroke-width:2px;
-    linkStyle 1,2 stroke:#ef6c00,stroke-width:3px;
-    linkStyle 3 stroke:#2e7d32,stroke-width:2px;
+    linkStyle 1,3 stroke:#ef6c00,stroke-width:3px;
+    linkStyle 2 stroke:#ef6c00,stroke-width:1.5px;
+    linkStyle 4 stroke:#2e7d32,stroke-width:2px;
 ```
 
 **Componentes**
@@ -329,12 +343,19 @@ flowchart LR
 
 **Conectores**
 
-| Conector | De → A | Protocolo | Naturaleza |
-|----------|--------|-----------|------------|
-| HTTP REST | Cliente → Productor | HTTP, `POST /items` (JSON) | Síncrono, solicitud/respuesta |
-| Publicar | Productor → Broker | AMQP 0-9-1, *default exchange*, `routing_key=items_queue` | Asíncrono, *fire-and-forget* |
-| Suscripción / entrega | Broker → Consumidor | AMQP 0-9-1, `basic.consume` + *ack* | Asíncrono, *push* desde el broker |
-| `db_connector` | Consumidor → MongoDB | Protocolo de MongoDB (driver Motor) | Síncrono desde el worker (`insert_one`) |
+Los conectores siguen la sección 5 de la guía: **la cola de mensajes es el conector
+principal**, y además existen `component-2 → component-1 (AMQP)`,
+`component-3 → component-1 (AMQP)` y `component-3 → component-4 (db_connector)`.
+Cada flecha sale del componente que **inicia** la conexión, y los números del
+diagrama marcan el orden del flujo.
+
+| # | Conector | De → A | Protocolo | Naturaleza |
+|---|----------|--------|-----------|------------|
+| 1 | HTTP REST | Cliente → Productor | HTTP, `POST /items` (JSON) | Síncrono, solicitud/respuesta |
+| 2 | Publicar | Productor → Broker (*default exchange*) | AMQP 0-9-1, mensaje persistente, `routing_key=items_queue` | Asíncrono, *fire-and-forget* |
+| 3 | Enrutamiento | *default exchange* → `items_queue` | Interno de RabbitMQ (la *routing key* es el nombre de la cola) | Interno del broker |
+| 4 | Suscribirse y consumir | Consumidor → Broker (`items_queue`) | AMQP 0-9-1, `basic.consume` + *ack* | Asíncrono: el worker se suscribe y el broker le entrega (*push*) los mensajes |
+| 5 | `db_connector` | Consumidor → MongoDB | Protocolo de MongoDB (driver Motor), `insert_one` | Síncrono desde el worker |
 
 El Productor y el Consumidor **nunca se comunican directamente**: todo pasa por el
 broker. Esa es la esencia del patrón.
@@ -369,10 +390,10 @@ flowchart TB
 
         subgraph engine["Docker Engine"]
             subgraph red["Red Docker Compose: broker-pattern_default (bridge)"]
-                c2["<b>component-2</b> - Productor<br/>imagen: broker-pattern-component-2<br/>build ./component-2 (python:3.11-slim)<br/>FastAPI + Uvicorn + aio-pika<br/>escucha :8000"]
-                c1["<b>component-1</b> - Broker<br/>imagen: rabbitmq:3-management<br/>RabbitMQ + plugin de gestion<br/>escucha :5672 (AMQP)<br/>y :15672 (HTTP)"]
-                c3["<b>component-3</b> - Consumidor<br/>imagen: broker-pattern-component-3<br/>build ./component-3 (python:3.11-slim)<br/>worker Python + aio-pika + motor<br/><i>sin puertos expuestos</i>"]
-                c4[("<b>component-4</b> - Base de datos<br/>imagen: mongo<br/>MongoDB<br/>escucha :27017")]
+                c2["<b>component-2</b> - Productor<br/>imagen: broker-pattern-component-2<br/>build ./component-2 (python:3.11-slim)<br/>FastAPI + Uvicorn + aio-pika<br/>escucha :8000<br/><i>depends_on: component-1 (healthy)</i>"]
+                c1["<b>component-1</b> - Broker<br/>imagen: rabbitmq:3-management<br/>RabbitMQ + plugin de gestion<br/>cola durable items_queue<br/>escucha :5672 (AMQP) y :15672 (HTTP)<br/><i>healthcheck: check_port_connectivity</i>"]
+                c3["<b>component-3</b> - Consumidor<br/>imagen: broker-pattern-component-3<br/>build ./component-3 (python:3.11-slim)<br/>worker Python + aio-pika + motor<br/><i>sin puertos expuestos</i><br/><i>depends_on: component-1 (healthy), component-4</i><br/><i>restart: on-failure</i>"]
+                c4[("<b>component-4</b> - Base de datos<br/>imagen: mongo<br/>MongoDB - BD broker_lab, coleccion items<br/>escucha :27017")]
             end
         end
     end
@@ -388,18 +409,20 @@ flowchart TB
     p27017 -. "27017:27017" .-> c4
 
     c2 == "AMQP :5672<br/>publicar" ==> c1
-    c3 == "AMQP :5672<br/>consumir" ==> c1
-    c3 == "MongoDB wire :27017<br/>insert_one" ==> c4
+    c3 == "AMQP :5672<br/>suscribirse y consumir" ==> c1
+    c3 == "db_connector<br/>MongoDB :27017" ==> c4
 
     subgraph leyenda["Leyenda"]
-        lc["Contenedor"]
+        lc["Contenedor de servicio"]
+        lk["Contenedor del broker"]
         lp{{"Puerto publicado en el host"}}
         ld[("Contenedor de base de datos")]
         le["#8594; Solida: trafico externo al host"]
         lm["#8674; Punteada: mapeo de puertos host:contenedor"]
         li["#8658; Gruesa: comunicacion interna por la red Compose (DNS por nombre de servicio)"]
-        lc ~~~ lp ~~~ ld
-        le ~~~ lm ~~~ li
+        lt["<i>Cursiva</i>: orden de arranque y reinicio definidos en docker-compose.yml"]
+        lc ~~~ lk ~~~ lp ~~~ ld
+        le ~~~ lm ~~~ li ~~~ lt
     end
 
     %% enlace invisible: ubica la leyenda debajo del host
@@ -414,10 +437,10 @@ flowchart TB
 
     class usuario externo;
     class c2,c3,lc contenedor;
-    class c1 broker;
+    class c1,lk broker;
     class c4,ld bd;
     class p8000,p15672,p5672,p27017,lp puerto;
-    class le,lm,li nota;
+    class le,lm,li,lt nota;
 
     style host fill:#fafafa,stroke:#616161,color:#212121,stroke-width:2px;
     style engine fill:#e1f5fe,stroke:#0277bd,color:#01579b;
